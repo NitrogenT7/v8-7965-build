@@ -1,0 +1,61 @@
+name: build-v8
+on: workflow_dispatch
+
+jobs:
+  arm64sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          sudo docker image prune -af || true
+          df -h /
+
+      - name: Fetch v8 at 11.6.189
+        timeout-minutes: 45
+        run: |
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$PWD/depot_tools" >> $GITHUB_PATH
+          export PATH="$PWD/depot_tools:$PATH"
+          fetch --nohooks v8
+          cd v8
+          git fetch --depth=1 origin "refs/tags/11.6.189:refs/tags/11.6.189"
+          git checkout 11.6.189
+          gclient sync -D --no-history --shallow
+          ls
+
+      - name: Build arm64 simulator d8
+        timeout-minutes: 240
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          cd v8
+          gn gen out.arm64sim --args='is_debug=false target_cpu="x64" v8_target_cpu="arm64" use_simulator=true v8_enable_disassembler=true v8_enable_object_print=true v8_enable_verify_heap=false symbol_level=1 is_component_build=false'
+          ninja -C out.arm64sim d8
+          ./out.arm64sim/d8 --version
+          tar czf ../d8-arm64sim-11.6.189.tar.gz -C out.arm64sim d8 icudtl.dat snapshot_blob.bin v8_build_config.json
+
+      - name: Build native arm64 (cross) d8
+        timeout-minutes: 240
+        continue-on-error: true
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          cd v8
+          gn gen out.arm64 --args='is_debug=false target_cpu="arm64" v8_target_cpu="arm64" v8_enable_disassembler=true v8_enable_object_print=true v8_enable_verify_heap=false symbol_level=1 is_component_build=false'
+          ninja -C out.arm64 d8
+          ./out.arm64/d8 --version || true
+          tar czf ../d8-arm64-11.6.189.tar.gz -C out.arm64 d8 icudtl.dat snapshot_blob.bin v8_build_config.json || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d8-arm64sim-11.6.189
+          path: d8-arm64sim-11.6.189.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d8-arm64-11.6.189
+          path: d8-arm64-11.6.189.tar.gz
+          if-no-files-found: ignore
