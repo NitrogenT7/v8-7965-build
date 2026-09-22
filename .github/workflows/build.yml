@@ -20,11 +20,12 @@ jobs:
           git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "$PWD/depot_tools" >> $GITHUB_PATH
           export PATH="$PWD/depot_tools:$PATH"
+          gclient --version
           fetch --nohooks v8
           cd v8
           git fetch --depth=1 origin "refs/tags/11.6.189:refs/tags/11.6.189"
           git checkout 11.6.189
-          gclient sync -D --no-history --shallow
+          gclient sync -D --no-history
           ls
 
       - name: Build arm64 simulator d8
